@@ -1,0 +1,8 @@
+[
+  {"match": ["いらっしゃいませ", "いらっしゃい"], "wav": "./audio/welcome.wav"},
+  {"match": ["こっち"], "wav": "./audio/kocchi.wav"},
+  {"match": ["バトンドール", "おすすめ"], "wav": "./audio/airport_limited.wav"},
+  {"match": ["手に取って"], "wav": "./audio/teni_totte.wav"},
+  {"regex": true, "match": ["買って(ください)?", "買っ て?"], "wav": "./audio/kattekatte.wav"},
+  {"match": ["シュガーバター", "もう一つ"], "wav": "./audio/other_flavor.wav"}
+]

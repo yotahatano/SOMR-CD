@@ -1,0 +1,6 @@
+sounddevice
+numpy
+pyttsx3
+# Optional:
+google-cloud-speech
+vosk

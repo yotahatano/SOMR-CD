@@ -1,0 +1,4 @@
+[
+    { "match": ["こんにちは", "こんにちわ", "こんちは"], "wav": "./audio/hello.wav" },
+    { "match": ["いらっしゃいませ", "いらっしゃい"],   "wav": "./audio/welcome.wav" }
+]
