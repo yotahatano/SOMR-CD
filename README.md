@@ -85,3 +85,23 @@ If you plan to use optional STT backends:
 
 ## License
 Private repository. Usage restricted to collaborators.
+
+## Windows quick commands (PowerShell)
+```powershell
+# 1) 依存インストール（仮想環境は任意）
+pip install sounddevice numpy pyttsx3 vosk
+
+# 2) パッケージを見せる
+$env:PYTHONPATH = "$PWD\src"
+
+# 3-A) VAD × ホットキー × シーケンス（SPACE→次の発話終端で次のWAV）
+python -m hello_demo.gui --mode end --tts wav --device 1 `
+  --gate hotkey --hotkey SPACE --arm-window-ms 3000 `
+  --sequence-file .\sequence.json
+
+# 3-B) キーワード版（Vosk）
+# 先に Vosk モデルのパスを設定（例）
+# $env:VOSK_MODEL_PATH = "C:\vosk\vosk-model-ja-0.22"
+python -m hello_demo.gui --mode keyword --stt vosk `
+  --keywords-file .\keywords.json --device 1
+```
