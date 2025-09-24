@@ -103,5 +103,8 @@ python -m hello_demo.gui --mode end --tts wav --device 1 `
 # 先に Vosk モデルのパスを設定（例）
 # $env:VOSK_MODEL_PATH = "C:\vosk\vosk-model-ja-0.22"
 python -m hello_demo.gui --mode keyword --stt vosk `
-  --keywords-file .\keywords.json --device 1
+>>     --keywords-file .\keywords.json --device 1 `
+>>     --tts voicevox `
+>>     --voicevox-url http://127.0.0.1:50021 `
+>>     --voicevox-speaker 3
 ```

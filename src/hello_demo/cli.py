@@ -23,11 +23,30 @@ def build_tts(name: str, **kwargs):
         )
     raise ValueError(f"unknown tts: {name}")
 
-def build_stt(stt: str) -> STTBase | None:
-    if stt == "google":
+def build_stt(name: str, **kwargs) -> STTBase | None:
+    if name == "google":
         return GoogleSTT()
-    if stt == "vosk":
-        return VoskSTT()
+    if name == "vosk":
+        from .stt import VoskSTT
+        grammar_words = None
+        kf = kwargs.get("keywords_file")
+        # keywords.json から "match"/"keywords"（list形式）や dictキーを集める
+        if kf and os.path.exists(kf):
+            with open(kf, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            words = []
+            if isinstance(data, list):
+                for e in data:
+                    words += (e.get("match") or e.get("keywords") or [])
+            elif isinstance(data, dict):
+                # {"hello":"…","welcome":"…"} 形式ならキーを語彙に
+                words += list(data.keys())
+            # 文字列のみ＆重複排除
+            grammar_words = sorted({w for w in words if isinstance(w, str) and w.strip()})
+        return VoskSTT(
+            model_path=os.environ.get("VOSK_MODEL_PATH") or "model",
+            grammar_words=grammar_words  # ← メモリ上で渡す。ファイル不要
+        )
     if stt == "auto":
         try:
             return GoogleSTT()
