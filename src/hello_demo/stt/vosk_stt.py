@@ -12,6 +12,7 @@ class VoskSTT:
         if not mp or not os.path.isdir(mp):
             raise RuntimeError("VOSK model path not set or invalid. Set VOSK_MODEL_PATH or pass model_path.")
         self._model = self._Model(mp)
+
     def transcribe(self, audio_wav_bytes: bytes, sample_rate: int) -> str | None:
         rec = self._KaldiRecognizer(self._model, sample_rate)
         rec.SetWords(False)

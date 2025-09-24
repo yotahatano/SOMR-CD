@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Optional, Any, List, Dict
 import json, os, re, unicodedata, time, sys
 from .config import Config
@@ -17,6 +17,7 @@ class HelloApp:
         self.on_user = on_user
         self.on_system = on_system
 
+        # keywords.json は list[ { "match":[...], "say":"...", "regex":bool } ] を推奨
         self.keyword_map: List[Dict[str, Any]] | None = None
         if cfg.keywords_file and os.path.exists(cfg.keywords_file):
             try:
@@ -35,6 +36,7 @@ class HelloApp:
         self._hotkey_space = (hk == "SPACE")
         self._hotkey_char = None if self._hotkey_space else (hk[0].lower())
 
+        # VAD時のシーケンス（say優先。wavは非推奨だが残っていれば後方互換で使う）
         self.sequence: List[Dict[str, Any]] = []
         self.seq_idx: int = 0
         if cfg.sequence_file and os.path.exists(cfg.sequence_file):
@@ -136,11 +138,14 @@ class HelloApp:
             if isinstance(data, list):
                 for it in data:
                     if isinstance(it, str):
+                        # 後方互換: 文字列だけなら wavパスとみなす（非推奨）
                         items.append({"wav": it})
                     elif isinstance(it, dict):
-                        if it.get("wav") or it.get("file"):
-                            items.append({"wav": it.get("wav") or it.get("file"),
-                                          "say": it.get("say") or it.get("text")})
+                        # "say"（または"text"）があれば優先
+                        if it.get("say") or it.get("text"):
+                            items.append({"say": it.get("say") or it.get("text")})
+                        elif it.get("wav") or it.get("file"):
+                            items.append({"wav": it.get("wav") or it.get("file")})
             else:
                 raise ValueError("sequence json must be a list")
         else:
@@ -148,6 +153,7 @@ class HelloApp:
                 for line in f:
                     s = line.strip()
                     if s and not s.startswith("#"):
+                        # 後方互換: 行形式はwavパス扱い（非推奨）
                         items.append({"wav": s})
         return items
 
@@ -165,6 +171,18 @@ class HelloApp:
             return entry
         return None
 
+    # ---- 追加: TTS 統一ヘルパ ----
+    def _speak_text(self, text: str) -> None:
+        """TTSで合成してバイト再生（常用パス）"""
+        if not text:
+            return
+        try:
+            wav_bytes = self.tts.speak(text)  # VoiceVoxTTS.speak() は WAV bytes を返す設計
+            if wav_bytes:
+                self.playback.play_bytes(wav_bytes)
+        except Exception as e:
+            print(f"[TTS] speak failed: {e}")
+
     def run(self) -> None:
         cfg = self.cfg
         rec = VADRecorder(
@@ -173,7 +191,7 @@ class HelloApp:
             device=cfg.device,
         )
         rec.start()
-        print("\\nSpeak into the microphone. Ctrl+C to quit.\\n")
+        print("\nSpeak into the microphone. Ctrl+C to quit.\n")
         try:
             while True:
                 self._poll_hotkey()
@@ -189,23 +207,25 @@ class HelloApp:
                         continue
                     if self.on_user:
                         self.on_user(f"(発話 {len(utter)/cfg.rate:.2f}s)")
-                    wav_path = cfg.wav_file
+
                     entry = self._next_sequence_item()
+                    say = None
                     if entry:
-                        wav_path = entry.get("wav") or wav_path
-                        print(f"[VAD-Seq] next -> {wav_path}")
+                        # say優先、なければ後方互換でwav→ベース名表示＋簡易読み上げ
+                        say = entry.get("say") or entry.get("text")
+                        if not say and (entry.get("wav") or entry.get("file")):
+                            wav_path = entry.get("wav") or entry.get("file")
+                            say = os.path.basename(str(wav_path))
+                            print(f"[VAD-Seq] (compat) wav listed -> speaking name: {say}")
                     else:
                         if self.cfg.sequence_file:
-                            print("[VAD-Seq] sequence finished; fallback to --wav-file")
-                    print(f"[VAD] utter#{self.utt_count}: playing {wav_path}")
+                            print("[VAD-Seq] sequence finished; continuing without sequence.")
+
+                    say = say or cfg.keyword or "はい"
                     if self.on_system:
-                        import os as _os
-                        self.on_system(f"再生: {_os.path.basename(wav_path)}")
-                    try:
-                        self.playback.play(wav_path)
-                    except Exception as e:
-                        print(f"[TTS] WAV playback failed: {e}. Falling back to TTS.")
-                        self.tts.speak(self.cfg.keyword)
+                        self.on_system(f"読み上げ: {say[:40]}{'...' if len(say) > 40 else ''}")
+                    print(f"[VAD] utter#{self.utt_count}: speaking via TTS")
+                    self._speak_text(say)
                     self._armed_until = 0.0
                     continue
 
@@ -217,42 +237,32 @@ class HelloApp:
                     print(f"[STT] Transcript: {text}")
                     if self.on_user:
                         self.on_user(text or "")
+
                     if self.keyword_map:
                         entry = self._match_from_map(text)
                         if entry:
-                            wav_path = entry.get("wav") or entry.get("file") or cfg.wav_file
-                            say = entry.get("say") or entry.get("text") or cfg.keyword
-                            print(f"[Mode:keyword] Matched entry -> wav={wav_path!r}")
+                            # say優先（textでも可）。無ければマッチワードをそのまま読む
+                            say = entry.get("say") or entry.get("text") or cfg.keyword or (text or "")
                             if self.on_system:
-                                import os as _os
-                                self.on_system(f"再生: {_os.path.basename(wav_path)}")
-                            if wav_path and os.path.exists(wav_path):
-                                try:
-                                    self.playback.play(wav_path)
-                                except Exception as e:
-                                    print(f"[TTS] WAV playback failed: {e}. Falling back to TTS.")
-                                    self.tts.speak(say)
-                            else:
-                                self.tts.speak(say)
+                                self.on_system(f"読み上げ: {say[:40]}{'...' if len(say) > 40 else ''}")
+                            print(f"[Mode:keyword] Matched entry -> say={say!r}")
+                            self._speak_text(say)
                         else:
                             print("[Mode:keyword] No mapping matched.")
                     else:
+                        # シンプルに cfg.keyword が含まれていれば応答
                         if text and cfg.keyword in text:
                             print("[Mode:keyword] Keyword detected. Responding...")
+                            say = cfg.keyword
                             if self.on_system:
-                                import os as _os
-                                self.on_system(f"再生: {_os.path.basename(cfg.wav_file)}")
-                            try:
-                                self.playback.play(cfg.wav_file)
-                            except Exception as e:
-                                print(f"[TTS] WAV playback failed: {e}. Falling back to TTS.")
-                                self.tts.speak(self.cfg.keyword)
+                                self.on_system(f"読み上げ: {say}")
+                            self._speak_text(say)
                         else:
                             print("[Mode:keyword] Keyword not found.")
                     continue
 
                 print(f"[App] Unknown mode: {cfg.mode}")
         except KeyboardInterrupt:
-            print("\\n[Exit] Stopping...")
+            print("\n[Exit] Stopping...")
         finally:
             rec.stop()

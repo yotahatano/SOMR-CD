@@ -4,3 +4,4 @@ pyttsx3
 # Optional:
 google-cloud-speech
 vosk
+requests>=2.31.0
